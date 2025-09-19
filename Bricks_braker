@@ -1,0 +1,197 @@
+#include <GL/glut.h>
+#include <iostream>
+#include <cstdio>
+#include <cmath>
+
+using namespace std;
+
+// Window size
+const int WIDTH = 800;
+const int HEIGHT = 600;
+
+// Paddle
+float paddleX = WIDTH / 2 - 50;
+const float paddleY = 50;
+const float paddleW = 100;
+const float paddleH = 15;
+
+// Ball
+float ballX = WIDTH / 2, ballY = HEIGHT / 2;
+float ballDX = 4, ballDY = 4;
+const float ballR = 8;
+
+// Bricks
+const int ROWS = 5, COLS = 10;
+int bricks[ROWS][COLS];  // hit points per brick
+const int brickW = 70, brickH = 20;
+int score = 0;
+
+int missCount = 0;   // count missed balls
+bool gameOver = false; // game over flag
+
+void resetBall() {
+    ballX = WIDTH / 2;
+    ballY = HEIGHT / 2;
+    ballDX = 4;
+    ballDY = -4;
+}
+
+void drawText(const char* text, float x, float y) {
+    glRasterPos2f(x, y);
+    while (*text) {
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *text++);
+    }
+}
+
+void initBricks() {
+    for (int i = 0; i < ROWS; i++) {
+        for (int j = 0; j < COLS; j++) {
+            bricks[i][j] = (i % 3) + 1; // some bricks take 1–3 hits
+        }
+    }
+}
+
+void drawBricks() {
+    for (int i = 0; i < ROWS; i++) {
+        for (int j = 0; j < COLS; j++) {
+            if (bricks[i][j] > 0) {
+                if (bricks[i][j] == 3) glColor3f(1.0, 0.0, 0.0); // red
+                else if (bricks[i][j] == 2) glColor3f(1.0, 0.5, 0.0); // orange
+                else glColor3f(1.0, 1.0, 0.0); // yellow
+
+                int x = j * (brickW + 10) + 50;
+                int y = HEIGHT - (i + 1) * (brickH + 10);
+
+                glBegin(GL_QUADS);
+                glVertex2f(x, y);
+                glVertex2f(x + brickW, y);
+                glVertex2f(x + brickW, y + brickH);
+                glVertex2f(x, y + brickH);
+                glEnd();
+            }
+        }
+    }
+}
+
+void drawPaddle() {
+    glColor3f(0.0, 0.7, 1.0);
+    glBegin(GL_QUADS);
+    glVertex2f(paddleX, paddleY);
+    glVertex2f(paddleX + paddleW, paddleY);
+    glVertex2f(paddleX + paddleW, paddleY + paddleH);
+    glVertex2f(paddleX, paddleY + paddleH);
+    glEnd();
+}
+
+void drawBall() {
+    glColor3f(1.0, 1.0, 1.0);
+    glBegin(GL_TRIANGLE_FAN);
+    glVertex2f(ballX, ballY);
+    for (int i = 0; i <= 360; i++) {
+        float angle = i * 3.1416 / 180;
+        glVertex2f(ballX + cos(angle) * ballR, ballY + sin(angle) * ballR);
+    }
+    glEnd();
+}
+
+void display() {
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    drawBricks();
+    drawPaddle();
+    drawBall();
+
+    glColor3f(1, 1, 1);
+    char buffer[40];
+    sprintf(buffer, "Score: %d  Misses: %d", score, missCount);
+    drawText(buffer, 10, 10);
+
+    if (gameOver) {
+        drawText("GAME OVER! You missed 4 balls!", WIDTH / 2 - 150, HEIGHT / 2);
+        drawText("Press ESC to Exit", WIDTH / 2 - 80, HEIGHT / 2 - 30);
+    }
+
+    glutSwapBuffers();
+}
+
+void update(int value) {
+    if (gameOver) return; // stop game loop if over
+
+    ballX += ballDX;
+    ballY += ballDY;
+
+    // Wall collisions
+    if (ballX - ballR < 0 || ballX + ballR > WIDTH) ballDX = -ballDX;
+    if (ballY + ballR > HEIGHT) ballDY = -ballDY;
+
+    // Paddle collision
+    if (ballY - ballR < paddleY + paddleH &&
+        ballX > paddleX && ballX < paddleX + paddleW &&
+        ballDY < 0) {
+        ballDY = -ballDY;
+    }
+
+    // Brick collisions
+    for (int i = 0; i < ROWS; i++) {
+        for (int j = 0; j < COLS; j++) {
+            if (bricks[i][j] > 0) {
+                int x = j * (brickW + 10) + 50;
+                int y = HEIGHT - (i + 1) * (brickH + 10);
+
+                if (ballX > x && ballX < x + brickW &&
+                    ballY + ballR > y && ballY - ballR < y + brickH) {
+                    ballDY = -ballDY;
+                    bricks[i][j]--;
+                    if (bricks[i][j] == 0) score += 10;
+                }
+            }
+        }
+    }
+
+    // Missed ball
+    if (ballY < 0) {
+        missCount++;
+        if (missCount >= 4) {
+            gameOver = true; // end game
+        } else {
+            resetBall();
+        }
+    }
+
+    glutPostRedisplay();
+    glutTimerFunc(16, update, 0); // ~60 FPS
+}
+
+void keyboard(int key, int x, int y) {
+    if (key == GLUT_KEY_LEFT && paddleX > 0) paddleX -= 20;
+    if (key == GLUT_KEY_RIGHT && paddleX + paddleW < WIDTH) paddleX += 20;
+}
+
+void normalKeys(unsigned char key, int x, int y) {
+    if (key == 27) exit(0); // ESC to exit
+}
+
+void initOpenGL() {
+    glClearColor(0, 0, 0, 1);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluOrtho2D(0, WIDTH, 0, HEIGHT);
+}
+
+int main(int argc, char** argv) {
+    glutInit(&argc, argv);
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+    glutInitWindowSize(WIDTH, HEIGHT);
+    glutCreateWindow("Brick Breaker - OpenGL");
+
+    initOpenGL();
+    initBricks();
+
+    glutDisplayFunc(display);
+    glutSpecialFunc(keyboard);
+    glutKeyboardFunc(normalKeys);
+    glutTimerFunc(16, update, 0);
+
+    glutMainLoop();
+    return 0;
+}
